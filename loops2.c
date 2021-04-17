@@ -4,6 +4,7 @@
 
 #define N 1729
 #define reps 1000
+#define thread_nums 12
 
 #include <omp.h> 
 
@@ -243,12 +244,12 @@ void init2(void){
 void runloop(int loopid){
   wq *work_queues;  //work queues for every thread
   omp_lock_t *locks; //locks for every thread
-#pragma omp parallel default(none) shared(loopid, work_queues, locks)
+#pragma omp parallel default(none) shared(loopid, work_queues, locks) num_threads(thread_nums)
   {
     int myid = omp_get_thread_num();
     int nthreads = omp_get_num_threads();
 
-    // printf("Current thread id is %d\n", myid);
+    printf("Current thread id is %d\n", myid);
 #pragma omp single
     {
       //Init work queues for all threads
