@@ -11,17 +11,19 @@
 double a[N][N], b[N][N], c[N];
 int jmax[N];  
 
-//chunk for affinity scheduling
-//a node with a chunk in queue
+/* 
+ * a chunk in a work queue with a pointer to next chunk
+ */
 typedef struct chunk{
-  //chunk info
   int lo;
   int hi;
   int workload;
-  struct chunk *next;//easy to find
+  struct chunk *next;
 } ck;
 
-//work queue with nodes
+/* 
+ * a work queue for a thread
+ */
 typedef struct work_queue{
     ck *front;//the front of the queue
     ck *rear;//the rear of the queue
@@ -30,8 +32,9 @@ typedef struct work_queue{
 } wq;
 
 /*
-Init a queue
-*/
+ *Init a queue
+ *input: a pointer to the queue
+ */
 void init_queue(wq *p_queue){
   if(p_queue != NULL){
     p_queue->front = NULL;
@@ -43,8 +46,9 @@ void init_queue(wq *p_queue){
 }
 
 /*
-Destroy a queue
-*/
+ *Destroy a queue
+ *input: a pointer to the queue
+ */
 void destroy_queue(wq *p_queue){
   if(p_queue != NULL){
     while(p_queue->front != NULL){
@@ -61,8 +65,10 @@ void destroy_queue(wq *p_queue){
 }
 
 /*
-enQueue for a new chunk
-*/
+ *enQueue for a new chunk
+ *input: a pointer to the queue
+ *       a chunk
+ */
 void enQueue(wq *p_queue, ck chunk){
   if(p_queue != NULL){
     //init for a new work node
@@ -91,8 +97,10 @@ void enQueue(wq *p_queue, ck chunk){
 }
 
 /*
-deQueue and return a chunk
-*/
+ *deQueue and return a chunk
+ *input: a pointer to the queue
+ *output: a chunk
+ */
 ck deQueue(wq *p_queue){
   ck res_chunk;
   if(p_queue != NULL && p_queue->front != NULL){
@@ -115,8 +123,10 @@ ck deQueue(wq *p_queue){
 }
 
 /*
-Judge if the queue is empty
-*/
+ *Judge if the queue is empty
+ *input: a pointer to the queue
+ *output: a integer representing if or not
+ */
 int isEmpty(wq *p_queue){
   if(p_queue != NULL){
     if(p_queue->total_chunk_size > 0 )
@@ -127,14 +137,15 @@ int isEmpty(wq *p_queue){
 }
 
 /*
-Print a queue
-*/
+ *Print a queue
+ *input: a pointer to the queue
+ */
 void print_queue(wq *p_queue){
   printf("Total work load: %d\n", p_queue->total_workload);
   printf("Total chunk size: %d\n", p_queue->total_chunk_size);
   ck *ck_node = p_queue->front;
   while(ck_node != NULL){
-    //print chunk info of every node
+    //print every chunk info
     printf("--------------\n");
     printf("lo:%d\n", ck_node->lo);
     printf("hi:%d\n", ck_node->hi);
@@ -148,6 +159,7 @@ void print_queue(wq *p_queue){
 void init1(void);
 void init2(void);
 void runloop(int);
+// decouple from previous runloop function
 void run_loopchunk(int, int, int);
 void loop1chunk(int, int);
 void loop2chunk(int, int);
@@ -164,7 +176,6 @@ int main(int argc, char *argv[]) {
   start1 = omp_get_wtime(); 
 
   for (r=0; r<reps; r++){ 
-    // printf("%d\n", r);
     runloop(1);
   } 
 
@@ -224,32 +235,15 @@ void init2(void){
   }
  
 } 
-// void runloop(int loopid)  {
-
-// #pragma omp parallel default(none) shared(loopid) 
-//   {
-//     int myid  = omp_get_thread_num();
-//     // printf("myid-%d\n", myid);
-//     int nthreads = omp_get_num_threads();
-//     // printf("nthreads-%d\n", nthreads); 
-//     int ipt = (int) ceil((double)N/(double)nthreads); 
-//     int lo = myid*ipt;
-//     int hi = (myid+1)*ipt;
-//     if (hi > N) hi = N; 
-  
-//     run_loopchunk(loopid, lo, hi);
-//   }
-// }
 
 void runloop(int loopid){
   wq *work_queues;  //work queues for every thread
   omp_lock_t *locks; //locks for every thread
+  //Set public data and thread numbers
 #pragma omp parallel default(none) shared(loopid, work_queues, locks) num_threads(thread_nums)
   {
     int myid = omp_get_thread_num();
     int nthreads = omp_get_num_threads();
-
-    printf("Current thread id is %d\n", myid);
 #pragma omp single
     {
       //Init work queues for all threads
@@ -262,14 +256,9 @@ void runloop(int loopid){
         omp_init_lock(&locks[i]);
       }
 
-      //debug
-      // for(int i = 0; i < nthreads ; i++){
-      //   print_queue(&work_queues[i]);
-      // }     
     }   
     
-    // printf("+++++++++++++++++++%d\n", myid);
-    //Local work set
+    //Set local workload
     int ipt = (int) ceil((double)N / (double)nthreads); 
     int local_set_start = myid * ipt;
     int local_set_end = (myid + 1)*ipt;
@@ -278,41 +267,23 @@ void runloop(int loopid){
       local_set_end = N;
     }
 
-    // printf("----------%d\n", myid);
-
     while(local_set_start < local_set_end){
-      //workload: 1/p of remaining iterations
+      // workload: 1/p of remaining iterations
       int workload = (int)ceil((double)(local_set_end - local_set_start) / (double)nthreads);
-      // printf("workload-----------%d\n", workload);
       ck temp_ck;
       temp_ck.lo = local_set_start;
       temp_ck.hi = local_set_start + workload;
       temp_ck.workload = workload;
       temp_ck.next = NULL;
 
-      //Put in thread's work queue
+      //Put in current thread's work queue
       enQueue(&work_queues[myid], temp_ck);
 
       local_set_start = local_set_start + workload;
     }
-    // printf("over-thread: %d\n", myid);
 #pragma omp barrier
-    // printf("All threads are over.\n");
-
-// debug
-// #pragma omp barrier 
-// #pragma omp single
-//     {
-//       for(int i = 0; i < nthreads ; i++){
-//         printf("Thread:%d\n", i);
-//         printf("Chunk size:%d\n", work_queues[i].total_chunk_size);
-//         printf("Work load:%d\n", work_queues[i].total_workload);
-//       }   
-//     }
-
     //local work execution
-    while(!isEmpty(&work_queues[myid])){
-      
+    while(!isEmpty(&work_queues[myid])){     
       ck current_chunk;
       //deQueue for executing
       omp_set_lock(&locks[myid]);
@@ -322,8 +293,8 @@ void runloop(int loopid){
       //execute current chunk
       run_loopchunk(loopid, current_chunk.lo, current_chunk.hi);
     }
-    // printf("-----tag%d-----\n", myid);
-    //execute wordload from other threads - work stealing
+
+    //execute wordload from other threads i.e. work stealing
     int m_id;
     int m_workload;
     while(1){
@@ -354,10 +325,8 @@ void runloop(int loopid){
       run_loopchunk(loopid, o_chunk.lo, o_chunk.hi);
 
     }
-    // printf("-----tag%d-----\n", myid);
 
 #pragma omp barrier
-    // printf("All threads are over.\n");
 
     destroy_queue(&work_queues[myid]);
     omp_destroy_lock(&locks[myid]);
