@@ -171,6 +171,10 @@ int main(int argc, char *argv[]) {
   double start1,start2,end1,end2;
   int r;
 
+
+  // if(freopen("log.txt","w",stdout)==NULL)
+  //   fprintf(stderr,"error\n");
+
   init1(); 
 
   start1 = omp_get_wtime(); 
@@ -185,7 +189,7 @@ int main(int argc, char *argv[]) {
 
   printf("Total time for %d reps of loop 1 = %f\n",reps, (float)(end1-start1)); 
 
-
+  // fclose(stdout);  
   init2(); 
 
   start2 = omp_get_wtime(); 
@@ -200,6 +204,7 @@ int main(int argc, char *argv[]) {
 
   printf("Total time for %d reps of loop 2 = %f\n",reps, (float)(end2-start2)); 
 
+  // fclose(stdout);  
 } 
 
 void init1(void){
@@ -283,15 +288,18 @@ void runloop(int loopid){
     }
 #pragma omp barrier
     //local work execution
-    while(!isEmpty(&work_queues[myid])){     
+    while(1){     
       ck current_chunk;
       //deQueue for executing
       omp_set_lock(&locks[myid]);
+      if(isEmpty(&work_queues[myid])){
+        omp_unset_lock(&locks[myid]);
+        break;
+      }
       current_chunk = deQueue(&work_queues[myid]);
-      omp_unset_lock(&locks[myid]);
-
       //execute current chunk
       run_loopchunk(loopid, current_chunk.lo, current_chunk.hi);
+      omp_unset_lock(&locks[myid]);
     }
 
     //execute wordload from other threads i.e. work stealing
@@ -311,6 +319,7 @@ void runloop(int loopid){
       if(m_id == -1){
         break;
       }
+
       omp_set_lock(&locks[m_id]);
 
       ck o_chunk;
@@ -320,9 +329,8 @@ void runloop(int loopid){
         continue;
       }
       o_chunk = deQueue(&work_queues[m_id]);
-      omp_unset_lock(&locks[m_id]);
-
       run_loopchunk(loopid, o_chunk.lo, o_chunk.hi);
+      omp_unset_lock(&locks[m_id]);
 
     }
 
